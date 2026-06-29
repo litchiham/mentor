@@ -1,0 +1,12 @@
+node_modules/
+lib/
+*.tsbuildinfo
+mentor/labextension/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.pytest_cache/
+*.egg
+.DS_Store
