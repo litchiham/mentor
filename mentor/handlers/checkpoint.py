@@ -111,6 +111,7 @@ class CheckpointListHandler(BaseMentorHandler):
             "timestamp": int(time.time() * 1000),
             "cellIndex": cell_index,
             "kernelStateHash": f"{checkpoint_id}.dill",
+            "kernelStatePath": state_path,
         }
 
         meta["nodes"] = meta.get("nodes", {})
@@ -163,7 +164,7 @@ class CheckpointHandler(BaseMentorHandler):
             cursor = n.get("prev")
 
         nodes.pop(checkpoint_id)
-        state_path = self._get_state_path(checkpoint_id)
+        state_path = node.get("kernelStatePath") or self._get_state_path(checkpoint_id)
         if os.path.exists(state_path):
             os.remove(state_path)
 
@@ -193,7 +194,14 @@ class KernelRestoreHandler(BaseMentorHandler):
 
     @web.authenticated
     async def post(self, kernel_id: str, checkpoint_id: str):
-        state_path = self._get_state_path(checkpoint_id)
+        meta = self._read_checkpoint_list()
+        node = meta.get("nodes", {}).get(checkpoint_id)
+        if node is None:
+            self.set_status(404)
+            self.write(json.dumps({"error": "checkpoint not found"}))
+            return
+
+        state_path = node.get("kernelStatePath") or self._get_state_path(checkpoint_id)
 
         if not os.path.exists(state_path):
             self.set_status(404)

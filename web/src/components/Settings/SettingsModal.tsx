@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { settingsStore } from '../../stores/settingsStore';
 import { testAgentConnection } from '../../services/api';
-import type { KernelSettings, ApiSettings, ThemeSettings, DebugSettings, ShortcutDef } from '../../stores/settingsStore';
+import type { KernelSettings, ApiSettings, ThemeSettings, DebugSettings, SaveSettings, ShortcutDef } from '../../stores/settingsStore';
 
-type Tab = 'kernel' | 'api' | 'theme' | 'shortcuts' | 'debug';
+type Tab = 'kernel' | 'api' | 'save' | 'theme' | 'shortcuts' | 'debug';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'kernel', label: '内核' },
   { key: 'api', label: 'API' },
+  { key: 'save', label: '保存' },
   { key: 'theme', label: '主题' },
   { key: 'shortcuts', label: '快捷键' },
   { key: 'debug', label: 'Debug' },
@@ -23,6 +24,7 @@ export default function SettingsModal() {
   const [api, setApi] = useState<ApiSettings>(store.api);
   const [theme, setTheme] = useState<ThemeSettings>(store.theme);
   const [shortcuts, setShortcuts] = useState(store.shortcuts.bindings);
+  const [save, setSave] = useState<SaveSettings>(store.save);
   const [debug, setDebug] = useState<DebugSettings>(store.debug);
   const [tab, setTab] = useState<Tab>('kernel');
 
@@ -32,6 +34,7 @@ export default function SettingsModal() {
       const s = settingsStore.getState();
       setKernel({ ...s.kernel });
       setApi({ ...s.api });
+      setSave({ ...s.save });
       setTheme({ ...s.theme });
       setShortcuts(s.shortcuts.bindings.map((b) => ({ ...b })));
       setDebug({ ...s.debug });
@@ -41,14 +44,14 @@ export default function SettingsModal() {
   const handleSave = useCallback(() => {
     settingsStore.getState().setKernel(kernel);
     settingsStore.getState().setApi(api);
+    settingsStore.getState().setSave(save);
     settingsStore.getState().setTheme(theme);
     settingsStore.getState().setDebug(debug);
-    // Set all shortcuts at once
     for (const s of shortcuts) {
       settingsStore.getState().setShortcut(s.id, s.keys);
     }
     close();
-  }, [kernel, api, theme, shortcuts, debug, close]);
+  }, [kernel, api, save, theme, shortcuts, debug, close]);
 
   const handleCancel = useCallback(() => {
     close();
@@ -78,6 +81,7 @@ export default function SettingsModal() {
           <div className="mentor-modal-content">
             {tab === 'kernel' && <KernelTab kernel={kernel} setKernel={setKernel} />}
             {tab === 'api' && <ApiTab api={api} setApi={setApi} />}
+            {tab === 'save' && <SaveTab save={save} setSave={setSave} />}
             {tab === 'theme' && <ThemeTab theme={theme} setTheme={setTheme} />}
             {tab === 'shortcuts' && <ShortcutsTab shortcuts={shortcuts} setShortcuts={setShortcuts} />}
             {tab === 'debug' && <DebugTab debug={debug} setDebug={setDebug} />}
@@ -242,6 +246,39 @@ function ApiTab({
   );
 }
 
+/* ========== Save Tab ========== */
+const AUTO_SAVE_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: '从不' },
+  { value: 120, label: '2 分钟' },
+  { value: 300, label: '5 分钟' },
+  { value: 1200, label: '20 分钟' },
+  { value: 3600, label: '1 小时' },
+];
+
+function SaveTab({
+  save,
+  setSave,
+}: {
+  save: SaveSettings;
+  setSave: (fn: (prev: SaveSettings) => SaveSettings) => void;
+}) {
+  return (
+    <div className="mentor-settings-form">
+      <Field label="自动保存间隔" hint="自动保存 notebook、工作区状态和聊天记录">
+        <select
+          className="mentor-input"
+          value={save.autoSaveInterval}
+          onChange={(e) => setSave((prev) => ({ ...prev, autoSaveInterval: Number(e.target.value) }))}
+        >
+          {AUTO_SAVE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
 /* ========== Theme Tab ========== */
 function ThemeTab({
   theme,
@@ -253,19 +290,15 @@ function ThemeTab({
   return (
     <div className="mentor-settings-form">
       <Field label="主题模式">
-        <div className="mentor-radio-group">
-          {(['light', 'dark', 'system'] as const).map((m) => (
-            <label key={m} className="mentor-radio">
-              <input
-                type="radio"
-                name="theme-mode"
-                checked={theme.mode === m}
-                onChange={() => setTheme((prev) => ({ ...prev, mode: m }))}
-              />
-              {m === 'light' ? '☀ 浅色' : m === 'dark' ? '🌙 深色' : '💻 跟随系统'}
-            </label>
-          ))}
-        </div>
+        <select
+          className="mentor-input"
+          value={theme.mode}
+          onChange={(e) => setTheme((prev) => ({ ...prev, mode: e.target.value as ThemeSettings['mode'] }))}
+        >
+          <option value="light">☀ 浅色</option>
+          <option value="dark">🌙 深色</option>
+          <option value="system">💻 跟随系统</option>
+        </select>
       </Field>
       <Field label="界面字体">
         <input
@@ -324,24 +357,48 @@ function ShortcutsTab({
   setShortcuts: (fn: (prev: ShortcutDef[]) => ShortcutDef[]) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
-  const [value, setValue] = useState('');
+  const [captured, setCaptured] = useState('');
 
-  const startEdit = (s: ShortcutDef) => {
-    setEditing(s.id);
-    setValue(s.keys);
-  };
+  useEffect(() => {
+    if (!editing) return;
+    setCaptured('');
 
-  const commit = () => {
-    if (editing && value.trim()) {
-      setShortcuts((prev) => prev.map((s) => (s.id === editing ? { ...s, keys: value.trim() } : s)));
-    }
-    setEditing(null);
-    setValue('');
-  };
+    let combo = '';
+    const handleDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push('Ctrl');
+      if (e.altKey) parts.push('Alt');
+      if (e.shiftKey) parts.push('Shift');
+      const key = e.key;
+      if (key === 'Control' || key === 'Alt' || key === 'Shift') return;
+      if (key === 'Escape') {
+        setEditing(null);
+        return;
+      }
+      parts.push(key.length === 1 ? key.toUpperCase() : key);
+      combo = parts.join('+');
+      setCaptured(combo);
+    };
+    const handleUp = (e: KeyboardEvent) => {
+      if (combo) {
+        setShortcuts((prev) => prev.map((s) => (s.id === editing ? { ...s, keys: combo } : s)));
+        combo = '';
+        setEditing(null);
+      }
+    };
+    window.addEventListener('keydown', handleDown, true);
+    window.addEventListener('keyup', handleUp, true);
+    return () => {
+      window.removeEventListener('keydown', handleDown, true);
+      window.removeEventListener('keyup', handleUp, true);
+    };
+  }, [editing, setShortcuts]);
 
   return (
     <div className="mentor-settings-form">
-      <p className="mentor-settings-hint">点击快捷键进入编辑，按 Esc 取消，按 Enter 保存。</p>
+      <p className="mentor-settings-hint">点击快捷键进入录制，按下组合键设定，Esc 取消。</p>
       <table className="mentor-shortcut-table">
         <thead>
           <tr>
@@ -355,23 +412,15 @@ function ShortcutsTab({
               <td>{s.label}</td>
               <td>
                 {editing === s.id ? (
-                  <input
-                    className="mentor-input mentor-shortcut-input"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commit();
-                      if (e.key === 'Escape') {
-                        setEditing(null);
-                        setValue('');
-                      }
-                    }}
-                    onBlur={commit}
-                    autoFocus
-                  />
+                  <span
+                    className="mentor-shortcut-keys"
+                    style={{ background: 'var(--color-accent)', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}
+                  >
+                    {captured || '按下组合键...'}
+                  </span>
                 ) : (
-                  <span className="mentor-shortcut-keys" onClick={() => startEdit(s)}>
-                    {s.keys.split(', ').map((k, i) => (
+                  <span className="mentor-shortcut-keys" onClick={() => setEditing(s.id)}>
+                    {s.keys.split('+').map((k, i) => (
                       <kbd key={i}>{k}</kbd>
                     ))}
                   </span>
@@ -404,20 +453,15 @@ function DebugTab({
   return (
     <div className="mentor-settings-form">
       <Field label="调试级别" hint="控制前端 console 和后端日志的详细程度">
-        <div className="mentor-radio-group">
+        <select
+          className="mentor-input"
+          value={debug.level}
+          onChange={(e) => setDebug((prev) => ({ ...prev, level: e.target.value as DebugSettings['level'] }))}
+        >
           {DEBUG_LEVELS.map((lvl) => (
-            <label key={lvl.key} className="mentor-radio">
-              <input
-                type="radio"
-                name="debug-level"
-                checked={debug.level === lvl.key}
-                onChange={() => setDebug((prev) => ({ ...prev, level: lvl.key }))}
-              />
-              {lvl.label}
-              <span style={{ fontSize: 11, color: 'var(--color-secondary)', marginLeft: 4 }}>{lvl.desc}</span>
-            </label>
+            <option key={lvl.key} value={lvl.key}>{lvl.label} — {lvl.desc}</option>
           ))}
-        </div>
+        </select>
       </Field>
     </div>
   );

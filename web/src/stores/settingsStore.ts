@@ -31,6 +31,10 @@ export interface DebugSettings {
   level: 'off' | 'error' | 'warn' | 'info' | 'debug';
 }
 
+export interface SaveSettings {
+  autoSaveInterval: number; // seconds: 0=never, 120=2min, 300=5min, 1200=20min, 3600=1h
+}
+
 export interface ShortcutDef {
   id: string;
   label: string;
@@ -48,6 +52,7 @@ export interface SettingsState {
   theme: ThemeSettings;
   shortcuts: ShortcutSettings;
   debug: DebugSettings;
+  save: SaveSettings;
   availableKernels: IKernelSpec[];
   kernelsLoading: boolean;
 
@@ -58,19 +63,24 @@ export interface SettingsState {
   setTheme: (patch: Partial<ThemeSettings>) => void;
   setShortcut: (id: string, keys: string) => void;
   setDebug: (debug: DebugSettings) => void;
+  setSave: (patch: Partial<SaveSettings>) => void;
   loadKernelSpecs: () => Promise<void>;
 }
 
 const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'new-cell', label: '新建 Cell', keys: 'Alt+N' },
   { id: 'run-cell', label: '运行 Cell', keys: 'Shift+Enter' },
-  { id: 'run-all', label: '运行全部', keys: 'Ctrl+Shift+Enter' },
-  { id: 'save', label: '保存', keys: 'Ctrl+S' },
-  { id: 'open', label: '打开', keys: 'Ctrl+O' },
+  { id: 'run-all', label: '运行全部', keys: 'Alt+Shift+Enter' },
+  { id: 'save', label: '保存', keys: 'Alt+S' },
+  { id: 'open', label: '打开工作区', keys: 'Alt+O' },
   { id: 'interrupt', label: '中断内核', keys: 'I, I' },
   { id: 'restart-kernel', label: '重启内核', keys: '0, 0' },
-  { id: 'toggle-agent', label: '切换 Agent 面板', keys: 'Ctrl+\\' },
-  { id: 'freeze', label: '冻结检查点', keys: 'Ctrl+Shift+F' },
+  { id: 'toggle-agent', label: '切换 Agent 面板', keys: 'Alt+\\' },
+  { id: 'freeze', label: '冻结检查点', keys: 'Alt+Shift+F' },
+  { id: 'undo', label: '撤销', keys: 'Alt+Z' },
+  { id: 'redo', label: '重做', keys: 'Alt+Shift+Z' },
+  { id: 'zoom-in', label: '放大', keys: 'Alt+=' },
+  { id: 'zoom-out', label: '缩小', keys: 'Alt+-' },
 ];
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -124,6 +134,10 @@ export const settingsStore = create<SettingsState>((set, get) => ({
     level: 'off',
   }),
 
+  save: loadFromStorage<SaveSettings>('save', {
+    autoSaveInterval: 0, // never by default
+  }),
+
   openSettings: () => {
     set({ open: true });
     // Auto-load kernel specs when opening settings
@@ -162,6 +176,12 @@ export const settingsStore = create<SettingsState>((set, get) => ({
   setDebug: (debug) => {
     saveToStorage('debug', debug);
     set({ debug });
+  },
+
+  setSave: (patch) => {
+    const next = { ...get().save, ...patch };
+    saveToStorage('save', next);
+    set({ save: next });
   },
 
   loadKernelSpecs: async () => {

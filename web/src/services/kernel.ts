@@ -27,11 +27,14 @@ export function getKernel(): IKernelConnection | null {
 }
 
 export async function startKernel(kernelName?: string): Promise<IKernelConnection> {
+  const name = kernelName || 'python3';
   if (_kernel && _kernel.status !== 'dead') {
-    return _kernel;
+    if (_kernel.name === name) return _kernel;
+    // Different kernel spec — shutdown and restart
+    await shutdownKernel();
   }
   const manager = getKernelManager();
-  _kernel = await manager.startNew({ name: kernelName || 'python3' });
+  _kernel = await manager.startNew({ name });
   return _kernel;
 }
 

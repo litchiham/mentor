@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { kernelStore, useKernelStatus } from '../../stores/kernelStore';
 import { settingsStore } from '../../stores/settingsStore';
 import FreezeButton from './FreezeButton';
@@ -23,7 +23,6 @@ export default function KernelStatusBar() {
   const status = useKernelStatus();
   const specs = settingsStore((s) => s.availableKernels);
   const kernelName = settingsStore((s) => s.kernel.kernelName);
-  const [selectedKernel, setSelectedKernel] = useState(kernelName);
 
   useEffect(() => {
     settingsStore.getState().loadKernelSpecs();
@@ -31,7 +30,6 @@ export default function KernelStatusBar() {
 
   const handleConnect = async () => {
     try {
-      settingsStore.getState().setKernel({ kernelName: selectedKernel });
       await kernelStore.getState().startKernel();
     } catch {
       // error already logged
@@ -56,9 +54,8 @@ export default function KernelStatusBar() {
 
         <select
           className="mentor-kernel-select"
-          value={selectedKernel}
+          value={kernelName}
           onChange={(e) => {
-            setSelectedKernel(e.target.value);
             settingsStore.getState().setKernel({ kernelName: e.target.value });
           }}
         >

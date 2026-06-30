@@ -324,6 +324,39 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+.mentor-chat-bubble-content pre {
+  background: rgba(0,0,0,0.06);
+  border-radius: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  margin: 6px 0;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.mentor-chat-bubble-content code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.mentor-chat-bubble-content pre code {
+  background: none;
+  padding: 0;
+}
+.mentor-chat-bubble-content p { margin: 4px 0; }
+.mentor-chat-bubble-content ul,
+.mentor-chat-bubble-content ol { margin: 4px 0; padding-left: 20px; }
+.mentor-chat-bubble-content h1,
+.mentor-chat-bubble-content h2,
+.mentor-chat-bubble-content h3 { margin: 8px 0 4px; font-size: 1em; }
+.mentor-chat-bubble-content table {
+  border-collapse: collapse; margin: 6px 0; font-size: 12px;
+}
+.mentor-chat-bubble-content th,
+.mentor-chat-bubble-content td {
+  border: 1px solid rgba(0,0,0,0.12); padding: 4px 8px;
+}
 .mentor-chat-bubble-time {
   font-size: 11px;
   color: var(--color-secondary);
@@ -456,6 +489,12 @@ body {
   padding: 8px 0 8px 68px;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.mentor-math-block {
+  text-align: center;
+  margin: 12px 0;
+  overflow-x: auto;
 }
 
 .mentor-markdown-rendered h1,

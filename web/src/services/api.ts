@@ -9,6 +9,7 @@ export interface ICheckpointItem {
   timestamp: number;
   cellIndex: number;
   kernelStateHash: string;
+  kernelStatePath?: string;
 }
 
 interface ICheckpointListResponse {
@@ -58,22 +59,26 @@ export async function deleteCheckpoint(checkpointId: string): Promise<void> {
 }
 
 export interface IAgentAction {
-  action: string;
+  action: 'add_code_cell' | 'add_markdown_cell' | 'update_cell' | 'delete_cell' |
+         'insert_cell_above' | 'insert_cell_below' |
+         'execute_from_start' | 'execute_from_checkpoint' | 'execute_step';
   source?: string;
+  cellId?: string;
+  cellType?: 'code' | 'markdown';
   afterId?: string;
 }
 
 export async function chatWithAgent(
   message: string,
   apiConfig: ApiSettings,
-  cells: { id: string; cellType: string; source: string; readOnly?: boolean }[],
+  context: Record<string, unknown>,
 ): Promise<{ reply: string; actions: IAgentAction[] }> {
   const res = await fetch(`${BASE}/agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message,
-      cells,
+      context,
       apiConfig,
     }),
   });

@@ -45,11 +45,11 @@ export default function MenuBar() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 's') {
+      if (e.altKey && e.key === 's') {
         e.preventDefault();
         handleSave();
       }
-      if (e.ctrlKey && e.key === 'o') {
+      if (e.altKey && e.key === 'o') {
         e.preventDefault();
         setWsDialogOpen(true);
       }
@@ -62,26 +62,26 @@ export default function MenuBar() {
     {
       label: 'File',
       items: [
-        { label: 'Open Workspace...', shortcut: 'Ctrl+O', action: () => setWsDialogOpen(true) },
-        { label: 'Save', shortcut: 'Ctrl+S', action: () => handleSave() },
+        { label: 'Open Workspace...', shortcut: 'Alt+O', action: () => setWsDialogOpen(true) },
+        { label: 'Save', shortcut: 'Alt+S', action: () => handleSave() },
       ],
     },
     {
       label: 'Edit',
       items: [
-        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => dispatchKeys('Ctrl+z') },
-        { label: 'Redo', shortcut: 'Ctrl+Shift+Z', action: () => dispatchKeys('Ctrl+Shift+z') },
-        { label: 'Cut', shortcut: 'Ctrl+X', action: () => dispatchKeys('Ctrl+x') },
-        { label: 'Copy', shortcut: 'Ctrl+C', action: () => dispatchKeys('Ctrl+c') },
-        { label: 'Paste', shortcut: 'Ctrl+V', action: () => dispatchKeys('Ctrl+v') },
+        { label: 'Undo', shortcut: 'Alt+Z', action: () => dispatchKeys('Ctrl+z') },
+        { label: 'Redo', shortcut: 'Alt+Shift+Z', action: () => dispatchKeys('Ctrl+Shift+z') },
+        { label: 'Cut', shortcut: 'Alt+X', action: () => dispatchKeys('Ctrl+x') },
+        { label: 'Copy', shortcut: 'Alt+C', action: () => dispatchKeys('Ctrl+c') },
+        { label: 'Paste', shortcut: 'Alt+V', action: () => dispatchKeys('Ctrl+v') },
       ],
     },
     {
       label: 'View',
       items: [
-        { label: 'Toggle Agent Panel', shortcut: 'Ctrl+\\', action: () => {} },
-        { label: 'Zoom In', shortcut: 'Ctrl+=', action: () => dispatchKeys('Ctrl+=') },
-        { label: 'Zoom Out', shortcut: 'Ctrl+-', action: () => dispatchKeys('Ctrl+-') },
+        { label: 'Toggle Agent Panel', shortcut: 'Alt+\\', action: () => {} },
+        { label: 'Zoom In', shortcut: 'Alt+=', action: () => dispatchKeys('Ctrl+=') },
+        { label: 'Zoom Out', shortcut: 'Alt+-', action: () => dispatchKeys('Ctrl+-') },
       ],
     },
     {
@@ -99,7 +99,7 @@ export default function MenuBar() {
         },
         {
           label: 'Run All',
-          shortcut: 'Ctrl+Shift+Enter',
+          shortcut: 'Alt+Shift+Enter',
           action: async () => {
             const store = getDefaultStore();
             const ids = store.get(cellIdsAtom);

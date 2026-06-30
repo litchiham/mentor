@@ -1,14 +1,21 @@
 import { create } from 'zustand';
 import { getDefaultStore } from 'jotai';
 import { chatWithAgent } from '../services/api';
+import type { IAgentAction } from '../services/api';
 import { settingsStore } from './settingsStore';
 import { kernelStore } from './kernelStore';
+import { checkpointStore } from './checkpointStore';
 import {
   cellIdsAtom,
   cellStateFamily,
   blueLineCellIdAtom,
+  redLineCellIdAtom,
   agentAppendCellAtom,
   updateCellSourceAtom,
+  insertCellAboveAtom,
+  insertCellBelowAtom,
+  removeCellAtom,
+  setCellTypeAtom,
 } from './notebookStore';
 import type { IChatMessage } from '../types';
 
@@ -25,29 +32,58 @@ function makeMsg(role: IChatMessage['role'], content: string): IChatMessage {
   return { role, content, timestamp: Date.now() };
 }
 
-/** Gather all cells, marking cells above the blue-line as read-only for the AI. */
-function gatherCells(): { id: string; cellType: string; source: string; readOnly: boolean }[] {
+/** Gather full notebook context: cells (with text outputs), blue-line, red-line, checkpoints. */
+function gatherNotebookContext(): Record<string, unknown> {
   const store = getDefaultStore();
   const ids = store.get(cellIdsAtom);
   const blueLineId = store.get(blueLineCellIdAtom);
-  // null = no blue line = all cells editable; non-null = blue line above that cell
+  const redLineId = store.get(redLineCellIdAtom);
   const blueIdx = blueLineId ? Math.max(0, ids.indexOf(blueLineId)) : 0;
-  return ids.map((id, idx) => {
+
+  const cells = ids.map((id, idx) => {
     const cell = store.get(cellStateFamily(id));
     return {
       id: cell.id,
+      index: idx,
       cellType: cell.cellType,
       source: cell.source,
+      executionCount: cell.executionCount,
+      isRunning: cell.isRunning,
       readOnly: idx < blueIdx,
+      outputs: cell.outputs
+        .filter((o) => o.outputType === 'stream' || o.outputType === 'error')
+        .map((o) => {
+          const out: Record<string, unknown> = { outputType: o.outputType };
+          if (o.name) out.name = o.name;
+          if (o.text) out.text = o.text.slice(0, 1000);
+          if (o.ename) out.ename = o.ename;
+          if (o.evalue) out.evalue = o.evalue;
+          return out;
+        }),
     };
   });
+
+  const activeCheckpoints = checkpointStore.getState().getActiveNodes();
+  const checkpoints = activeCheckpoints.map((cp) => ({
+    id: cp.id,
+    name: cp.name,
+    cellIndex: cp.cellIndex,
+  }));
+
+  return {
+    cells,
+    blueLineCellId: blueLineId,
+    redLineCellId: redLineId,
+    checkpoints,
+    cellCount: ids.length,
+  };
 }
 
 /** Check whether a cell is below (or at) the blue line — i.e. editable by the AI. */
 function isCellEditable(jotai: ReturnType<typeof getDefaultStore>, cellId: string): boolean {
   const ids = jotai.get(cellIdsAtom);
   const blueLineId = jotai.get(blueLineCellIdAtom);
-  if (!blueLineId) return true; // no blue line → everything editable
+  if (!blueLineId) return true;
   const blueIdx = ids.indexOf(blueLineId);
   if (blueIdx === -1) return true;
   const cellIdx = ids.indexOf(cellId);
@@ -55,20 +91,18 @@ function isCellEditable(jotai: ReturnType<typeof getDefaultStore>, cellId: strin
 }
 
 /** Execute actions returned by the agent. Hard-enforced: actions targeting read-only cells are rejected. */
-function executeActions(actions: unknown[]): string[] {
+function executeActions(actions: IAgentAction[]): string[] {
   const jotai = getDefaultStore();
   const results: string[] = [];
 
   for (const a of actions) {
-    const action = a as Record<string, unknown>;
-    const type = action.action as string;
-    const source = action.source as string | undefined;
+    const type = a.action;
 
     switch (type) {
       case 'add_code_cell': {
         const cellId = jotai.set(agentAppendCellAtom);
-        if (source) {
-          jotai.set(updateCellSourceAtom, { cellId, source });
+        if (a.source) {
+          jotai.set(updateCellSourceAtom, { cellId, source: a.source });
         }
         results.push(cellId);
         break;
@@ -76,36 +110,115 @@ function executeActions(actions: unknown[]): string[] {
       case 'add_markdown_cell': {
         const cellId = jotai.set(agentAppendCellAtom);
         const cellAtom = cellStateFamily(cellId);
-        jotai.set(cellAtom, (prev) => ({ ...prev, cellType: 'markdown', source: source || '' }));
+        jotai.set(cellAtom, (prev) => ({ ...prev, cellType: 'markdown', source: a.source || '' }));
         results.push(cellId);
         break;
       }
-      case 'update_last_cell': {
-        const ids = jotai.get(cellIdsAtom);
-        const lastId = ids[ids.length - 1];
-        if (!isCellEditable(jotai, lastId)) {
-          console.warn('[blue-line] Rejected update_last_cell: cell is read-only', lastId);
+      case 'update_cell': {
+        if (!a.cellId) break;
+        if (!isCellEditable(jotai, a.cellId)) {
+          console.warn('[blue-line] Rejected update_cell: cell is read-only', a.cellId);
           break;
         }
-        if (source) {
-          jotai.set(updateCellSourceAtom, { cellId: lastId, source });
+        if (a.source !== undefined) {
+          jotai.set(updateCellSourceAtom, { cellId: a.cellId, source: a.source });
         }
-        results.push(lastId);
+        if (a.cellType) {
+          jotai.set(setCellTypeAtom, { cellId: a.cellId, cellType: a.cellType });
+        }
+        results.push(a.cellId);
         break;
       }
-      case 'run_last_cell': {
+      case 'delete_cell': {
+        if (!a.cellId) break;
+        if (!isCellEditable(jotai, a.cellId)) {
+          console.warn('[blue-line] Rejected delete_cell: cell is read-only', a.cellId);
+          break;
+        }
+        jotai.set(removeCellAtom, a.cellId);
+        results.push(a.cellId);
+        break;
+      }
+      case 'insert_cell_above': {
+        if (!a.cellId) break;
         const ids = jotai.get(cellIdsAtom);
-        if (ids.length > 0) {
-          const lastId = ids[ids.length - 1];
-          if (!isCellEditable(jotai, lastId)) {
-            console.warn('[blue-line] Rejected run_last_cell: cell is read-only', lastId);
+        const idx = ids.indexOf(a.cellId);
+        if (idx === -1) break;
+        // Check blue-line: can only insert at or after blue-line
+        const blueLineId = jotai.get(blueLineCellIdAtom);
+        if (blueLineId) {
+          const blueIdx = ids.indexOf(blueLineId);
+          if (idx < blueIdx) {
+            console.warn('[blue-line] Rejected insert_cell_above: above blue-line', a.cellId);
             break;
           }
-          const cell = jotai.get(cellStateFamily(lastId));
-          if (cell.cellType === 'code' && cell.source) {
-            kernelStore.getState().executeCell(lastId, cell.source);
+        }
+        jotai.set(insertCellAboveAtom, a.cellId);
+        // Get the newly created cell (it's now at the same index)
+        const newIds = jotai.get(cellIdsAtom);
+        const newCellId = newIds[idx];
+        if (a.source) {
+          jotai.set(updateCellSourceAtom, { cellId: newCellId, source: a.source });
+        }
+        if (a.cellType === 'markdown') {
+          jotai.set(setCellTypeAtom, { cellId: newCellId, cellType: 'markdown' });
+        }
+        results.push(newCellId);
+        break;
+      }
+      case 'insert_cell_below': {
+        if (!a.cellId) break;
+        const ids = jotai.get(cellIdsAtom);
+        const idx = ids.indexOf(a.cellId);
+        if (idx === -1) break;
+        const blueLineId = jotai.get(blueLineCellIdAtom);
+        if (blueLineId) {
+          const blueIdx = ids.indexOf(blueLineId);
+          if (idx < blueIdx) {
+            console.warn('[blue-line] Rejected insert_cell_below: above blue-line', a.cellId);
+            break;
           }
         }
+        jotai.set(insertCellBelowAtom, a.cellId);
+        const newIds = jotai.get(cellIdsAtom);
+        const newCellId = newIds[idx + 1];
+        if (a.source) {
+          jotai.set(updateCellSourceAtom, { cellId: newCellId, source: a.source });
+        }
+        if (a.cellType === 'markdown') {
+          jotai.set(setCellTypeAtom, { cellId: newCellId, cellType: 'markdown' });
+        }
+        results.push(newCellId);
+        break;
+      }
+      case 'execute_from_start': {
+        if (!a.cellId) break;
+        if (!isCellEditable(jotai, a.cellId)) {
+          console.warn('[blue-line] Rejected execute_from_start: cell is read-only', a.cellId);
+          break;
+        }
+        kernelStore.getState().executeFromStart(a.cellId);
+        results.push(a.cellId);
+        break;
+      }
+      case 'execute_from_checkpoint': {
+        if (!a.cellId) break;
+        if (!isCellEditable(jotai, a.cellId)) {
+          console.warn('[blue-line] Rejected execute_from_checkpoint: cell is read-only', a.cellId);
+          break;
+        }
+        kernelStore.getState().executeFromCheckpoint(a.cellId);
+        results.push(a.cellId);
+        break;
+      }
+      case 'execute_step': {
+        if (!a.cellId) break;
+        if (!isCellEditable(jotai, a.cellId)) {
+          console.warn('[blue-line] Rejected execute_step: cell is read-only', a.cellId);
+          break;
+        }
+        kernelStore.getState().executeStep(a.cellId);
+        results.push(a.cellId);
         break;
       }
     }
@@ -124,8 +237,8 @@ export const chatStore = create<ChatState>((set, get) => ({
 
     try {
       const apiConfig = settingsStore.getState().api;
-      const cells = gatherCells();
-      const result = await chatWithAgent(content, apiConfig, cells);
+      const context = gatherNotebookContext();
+      const result = await chatWithAgent(content, apiConfig, context);
       const agentMsg = makeMsg('agent', result.reply);
       set((s) => ({ messages: [...s.messages, agentMsg], isLoading: false }));
 

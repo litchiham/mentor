@@ -23,16 +23,31 @@ You can modify the notebook by including an ACTIONS block at the end of your res
 Use this JSON format after a line containing exactly ---ACTIONS---:
 
 ---ACTIONS---
-[{"action": "add_code_cell", "source": "print(1+1)"},
- {"action": "run_last_cell"}]
+[{"action": "add_code_cell", "source": "print(1+1)"}]
 
 Available actions:
-- add_code_cell: add a new code cell. Params: source (string), afterId (optional string - cell ID to insert after)
-- add_markdown_cell: add a markdown cell. Params: source (string)
-- update_last_cell: replace the source of the last cell. Params: source (string)
-- run_last_cell: execute the most recently added/created cell
+- add_code_cell: append a new code cell at the end. Params: source (string)
+- add_markdown_cell: append a new markdown cell at the end. Params: source (string)
+- update_cell: replace the source of an existing cell. Params: cellId (string, required), source (string), cellType (optional "code"|"markdown")
+- delete_cell: remove a cell. Params: cellId (string, required)
+- insert_cell_above: insert a new cell above the given cellId. Params: cellId (string, required), source (string), cellType (optional "code"|"markdown")
+- insert_cell_below: insert a new cell below the given cellId. Params: cellId (string, required), source (string), cellType (optional "code"|"markdown")
+- execute_from_start: run all code cells from the beginning down to the given cellId. Params: cellId (string, required)
+- execute_from_checkpoint: restore the last checkpoint, then run from there down to the given cellId. Params: cellId (string, required)
+- execute_step: execute the single cell at cellId (the red-line's next cell). Params: cellId (string, required)
 
-When the user asks you to write code or create a notebook cell, ALWAYS include the code in an add_code_cell action.
+When writing new code, use add_code_cell. When modifying existing cells, use update_cell with the cell's id.
+All write actions (update, delete, insert, execute_*) require a valid cellId from the context. Only target editable cells.
+
+## Code Execution Policy
+- NEVER auto-execute code after writing it. The three execution actions are only for when the user explicitly asks.
+- When the user says "运行", "run", "执行", "execute" or similar, choose the right execution mode:
+  - Use execute_step to run just the next cell (single step forward from the red-line).
+  - Use execute_from_checkpoint to resume from the last checkpoint.
+  - Use execute_from_start to re-run everything from the beginning.
+- If the user doesn't specify a mode, default to execute_step for the cell the user likely means (e.g. the one just created).
+- If the user only asks you to write code or explain something, do not include any execute action.
+
 Keep your reply short and conversational. The actions block is for the machine to execute."""
 
 
@@ -94,8 +109,14 @@ class AgentChatHandler(ExtensionHandlerMixin, APIHandler):
     async def post(self):
         body = json.loads(self.request.body)
         message = body.get("message", "")
-        cells = body.get("cells", [])
         api_config = body.get("apiConfig", {})
+
+        # Parse the rich context object from frontend
+        context = body.get("context", {})
+        cells = context.get("cells", [])
+        blue_line_id = context.get("blueLineCellId")
+        red_line_id = context.get("redLineCellId")
+        checkpoints = context.get("checkpoints", [])
 
         provider = api_config.get("provider", "deepseek")
         model = api_config.get("model", "deepseek-v4-pro")
@@ -111,8 +132,8 @@ class AgentChatHandler(ExtensionHandlerMixin, APIHandler):
             }))
             return
 
-        # Build notebook context
-        context_parts = ["## Current notebook cells:\n"]
+        # Build notebook context (rich format)
+        context_parts = ["## Current notebook:\n"]
         if cells:
             for i, cell in enumerate(cells):
                 ctype = cell.get("cellType", "code")
@@ -124,8 +145,33 @@ class AgentChatHandler(ExtensionHandlerMixin, APIHandler):
                 context_parts.append(
                     f"Cell {i} [{cid}] {tag} ({ctype}):\n```\n{src_preview}\n```"
                 )
+                # Include text outputs if present
+                outputs = cell.get("outputs", [])
+                if outputs:
+                    for o in outputs:
+                        if o.get("outputType") == "stream" and o.get("text"):
+                            text = o["text"][:500]
+                            context_parts.append(f"  Output: {text}")
+                        elif o.get("outputType") == "error":
+                            ename = o.get("ename", "Error")
+                            evalue = o.get("evalue", "")
+                            context_parts.append(f"  Error: {ename}: {evalue[:300]}")
         else:
             context_parts.append("(empty notebook — no cells yet)")
+
+        # Blue-line / Red-line
+        if blue_line_id:
+            context_parts.append(f"\nBlue-line (read-only boundary): cell [{blue_line_id}] — cells above are locked.")
+        if red_line_id:
+            context_parts.append(f"Red-line (execution marker): cell [{red_line_id}] — last executed cell.")
+
+        # Checkpoints
+        if checkpoints:
+            cp_lines = ["\n## Active checkpoints:"]
+            for cp in checkpoints:
+                cp_lines.append(f"- [{cp.get('id','?')}] {cp.get('name','?')} (cell {cp.get('cellIndex','?')})")
+            context_parts.extend(cp_lines)
+
         notebook_context = "\n".join(context_parts)
 
         self.log.info(

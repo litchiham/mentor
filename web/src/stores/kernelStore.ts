@@ -37,10 +37,12 @@ export const kernelStore = create<KernelState>((set, get) => ({
   kernelId: null,
 
   startKernel: async () => {
-    if (get().status === 'connecting' || get().status === 'busy' || get().status === 'idle') return;
+    if (get().status === 'connecting' || get().status === 'busy') return;
+    const kernelName = settingsStore.getState().kernel.kernelName;
+    const current = getKernel();
+    if (current && current.name === kernelName && current.status === 'idle') return;
     set({ status: 'connecting' });
     try {
-      const kernelName = settingsStore.getState().kernel.kernelName;
       const kernel: IKernelConnection = await startKernel(kernelName);
       kernel.statusChanged.connect((_sender: IKernelConnection, newStatus: KernelMessage.Status) => {
         const mapped: KernelStatus =
