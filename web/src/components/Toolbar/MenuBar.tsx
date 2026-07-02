@@ -27,7 +27,11 @@ function dispatchKeys(keys: string) {
   el.dispatchEvent(new KeyboardEvent('keydown', opts));
 }
 
-export default function MenuBar() {
+interface MenuBarProps {
+  onOpenPlugins: () => void;
+}
+
+export default function MenuBar({ onOpenPlugins }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [wsDialogOpen, setWsDialogOpen] = useState(false);
   const startKernel = kernelStore((s) => s.startKernel);
@@ -85,38 +89,18 @@ export default function MenuBar() {
       ],
     },
     {
-      label: 'Run',
+      label: 'Kernel',
       items: [
-        {
-          label: 'Run to Cell',
-          shortcut: 'Shift+Enter',
-          action: async () => {
-            const store = getDefaultStore();
-            const activeId = store.get(activeCellIdAtom);
-            if (!activeId) return;
-            await kernelStore.getState().executeFromCheckpoint(activeId);
-          },
-        },
-        {
-          label: 'Run All',
-          shortcut: 'Alt+Shift+Enter',
-          action: async () => {
-            const store = getDefaultStore();
-            const ids = store.get(cellIdsAtom);
-            if (ids.length === 0) return;
-            const lastId = ids[ids.length - 1];
-            await kernelStore.getState().executeFromCheckpoint(lastId);
-          },
-        },
         { label: 'Interrupt Kernel', action: () => shutdownKernel().then(() => startKernel()) },
         { label: 'Restart Kernel', action: () => shutdownKernel().then(() => startKernel()) },
       ],
     },
     {
-      label: 'Mentorship',
+      label: 'Mentor',
       items: [
-        { label: 'About Mentor', action: () => {} },
+        { label: 'Plugins...', action: () => onOpenPlugins() },
         { label: 'Settings...', action: () => settingsStore.getState().openSettings() },
+        { label: 'About Mentor', action: () => {} },
       ],
     },
   ];

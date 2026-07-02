@@ -22,6 +22,11 @@ from .handlers.workspace import (
     DirectoryBrowseHandler,
     DirectoryCreateHandler,
 )
+from .handlers.plugin import (
+    PluginListHandler,
+    PluginInstallHandler,
+    PluginUninstallHandler,
+)
 
 
 class KernelSpecsHandler(APIHandler):
@@ -77,6 +82,9 @@ class MentorApp(ExtensionApp):
                 (f"{base}mentor/api/workspace/state", WorkspaceStateHandler),
                 (f"{base}mentor/api/dir/browse", DirectoryBrowseHandler),
                 (f"{base}mentor/api/dir/mkdir", DirectoryCreateHandler),
+                (f"{base}mentor/api/plugins", PluginListHandler),
+                (f"{base}mentor/api/plugins/install", PluginInstallHandler),
+                (f"{base}mentor/api/plugins/uninstall/([^/]+)", PluginUninstallHandler),
             ]
         )
 

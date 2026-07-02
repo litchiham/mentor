@@ -70,12 +70,15 @@ function gatherNotebookContext(): Record<string, unknown> {
     cellIndex: cp.cellIndex,
   }));
 
+  const kernelId = kernelStore.getState().kernelId;
+
   return {
     cells,
     blueLineCellId: blueLineId,
     redLineCellId: redLineId,
     checkpoints,
     cellCount: ids.length,
+    kernelId: kernelId || null,
   };
 }
 

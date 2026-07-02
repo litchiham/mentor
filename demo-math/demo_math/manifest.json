@@ -1,0 +1,59 @@
+{
+  "name": "demo-math",
+  "version": "1.0.0",
+  "description": "Demo math plugin — basic math tools and sample data for testing the Mentor plugin system.",
+  "author": "Mentor Team",
+  "python_module": "demo_math",
+  "requires": ["numpy>=1.21"],
+  "guidelines": "Use this plugin when the user needs basic mathematical operations: solving quadratic equations or computing descriptive statistics. This is a demo plugin — its tools serve as examples of the plugin interface. Always explain results clearly to the user.",
+  "tools": [
+    {
+      "name": "quadratic_solver",
+      "description": "Solve quadratic equation ax^2 + bx + c = 0. Returns real roots (may be 0, 1, or 2).",
+      "guidelines": "Use when user provides coefficients a, b, c for a quadratic equation. Warn the user when discriminant is negative (no real roots).",
+      "function": "demo_math.tools:quadratic_solver",
+      "parameters": {
+        "a": {"type": "number", "description": "Coefficient of x^2", "unit": "", "required": true},
+        "b": {"type": "number", "description": "Coefficient of x", "unit": "", "required": true},
+        "c": {"type": "number", "description": "Constant term", "unit": "", "required": true}
+      },
+      "returns": {"type": "array[number]", "description": "List of real roots (sorted ascending)"}
+    },
+    {
+      "name": "statistics",
+      "description": "Compute basic descriptive statistics for a list of numbers: count, mean, std, min, max, median.",
+      "guidelines": "Use when user asks for statistical summary of a dataset. The data must be a list of numbers. Results include count, mean, standard deviation, min, max, and median.",
+      "function": "demo_math.tools:statistics",
+      "parameters": {
+        "data": {"type": "array[number]", "description": "List of numeric values", "unit": "", "required": true}
+      },
+      "returns": {"type": "object", "description": "{count, mean, std, min, max, median}"}
+    }
+  ],
+  "data": [
+    {
+      "name": "sample_measurements",
+      "description": "Generate synthetic measurement data from a normal distribution with given parameters.",
+      "guidelines": "Use this when you need test data with known statistical properties. Default: n=100, mean=0, std=1. The data is generated in-memory (no disk I/O).",
+      "loader": "demo_math.data:generate_sample",
+      "loader_type": "function",
+      "parameters": {
+        "n": {"type": "int", "description": "Number of samples", "required": false},
+        "mean": {"type": "float", "description": "Mean of the distribution", "required": false},
+        "std": {"type": "float", "description": "Standard deviation", "required": false}
+      },
+      "returns": {"type": "numpy.ndarray", "description": "Array of shape (n,) with float64 values"}
+    },
+    {
+      "name": "csv_data",
+      "description": "Parse a CSV file from a local path and return as structured data.",
+      "guidelines": "Use when the user mentions a CSV file on disk. The loader reads the file using numpy.genfromtxt. The file must exist at the given path.",
+      "loader": "demo_math.data:load_csv",
+      "loader_type": "function",
+      "parameters": {
+        "filepath": {"type": "string", "description": "Absolute path to the CSV file", "required": true}
+      },
+      "returns": {"type": "numpy.ndarray", "description": "2D array of parsed CSV data"}
+    }
+  ]
+}

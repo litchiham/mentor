@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demo-math"
+version = "1.0.0"
+description = "Demo math plugin — basic math tools and sample data for testing the Mentor plugin system."
+requires-python = ">=3.8"
+dependencies = ["numpy>=1.21"]
+
+[project.entry-points."mentor.plugins"]
+demo-math = "demo_math"
+
+[tool.setuptools.package-data]
+demo_math = ["manifest.json"]

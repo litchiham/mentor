@@ -3,9 +3,9 @@ import json
 import traceback
 import re
 
-from jupyter_server.base.handlers import APIHandler
-from jupyter_server.extension.handler import ExtensionHandlerMixin
 from tornado import web
+
+from .checkpoint import BaseMentorHandler
 
 
 SYSTEM_PROMPT = """You are Mentor, an AI research assistant embedded in a computational notebook.
@@ -39,6 +39,13 @@ Available actions:
 When writing new code, use add_code_cell. When modifying existing cells, use update_cell with the cell's id.
 All write actions (update, delete, insert, execute_*) require a valid cellId from the context. Only target editable cells.
 
+## Plugin Tools
+If "Available Plugin Tools" are listed in the context, you can use them by writing normal Python code in a code cell.
+- Write import statements and function calls as regular Python code (e.g. `from demo_math.tools import quadratic_solver`).
+- Use add_code_cell to create a cell with the import and call code.
+- Check each tool's parameters, units, and guidelines before writing the code.
+- Explain the code and expected results to the user. Do NOT auto-execute — let the user review and run the code.
+
 ## Code Execution Policy
 - NEVER auto-execute code after writing it. The three execution actions are only for when the user explicitly asks.
 - When the user says "运行", "run", "执行", "execute" or similar, choose the right execution mode:
@@ -71,7 +78,7 @@ def _parse_actions(text: str) -> tuple[str, list[dict]]:
     return text.strip(), []
 
 
-class AgentTestHandler(ExtensionHandlerMixin, APIHandler):
+class AgentTestHandler(BaseMentorHandler):
     """POST /mentor/api/agent/test — test API connectivity."""
 
     @web.authenticated
@@ -102,7 +109,7 @@ class AgentTestHandler(ExtensionHandlerMixin, APIHandler):
             self.write(json.dumps({"ok": False, "error": traceback.format_exc()[:200]}))
 
 
-class AgentChatHandler(ExtensionHandlerMixin, APIHandler):
+class AgentChatHandler(BaseMentorHandler):
     """POST /mentor/api/agent/chat"""
 
     @web.authenticated
@@ -179,17 +186,40 @@ class AgentChatHandler(ExtensionHandlerMixin, APIHandler):
             provider, model, message, len(cells),
         )
 
+        # Discover plugins from the kernel (if available)
+        kernel_id = context.get("kernelId")
+        tools_text = ""
+        if kernel_id:
+            try:
+                from ..plugin.manager import PluginManager
+
+                code = PluginManager.get_discovery_code()
+                raw = await self._run_in_kernel(kernel_id, code, timeout=15)
+                # Extract the marker-delimited JSON array
+                begin = "---MENTOR_PLUGINS_BEGIN---"
+                end = "---MENTOR_PLUGINS_END---"
+                if begin in raw and end in raw:
+                    inner = raw.split(begin, 1)[1].split(end, 1)[0].strip()
+                    manifests = json.loads(inner)
+                    tools_text = PluginManager.get_tools_context_text(manifests)
+            except Exception:
+                self.log.warning("Plugin discovery failed: %s", traceback.format_exc())
+
         try:
             from openai import AsyncOpenAI
 
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+            system_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            if tools_text:
+                system_messages.append({"role": "system", "content": tools_text})
 
             response = await client.chat.completions.create(
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    *system_messages,
                     {"role": "user", "content": notebook_context},
                     {"role": "user", "content": message},
                 ],

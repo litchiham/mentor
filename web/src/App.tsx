@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { workspaceStore } from './stores/workspaceStore';
 import { settingsStore } from './stores/settingsStore';
 import Notebook from './components/Notebook/Notebook';
 import AgentPanel from './components/Agent/AgentPanel';
+import PluginPanel from './components/Plugin/PluginPanel';
 import MenuBar from './components/Toolbar/MenuBar';
 import KernelStatusBar from './components/Toolbar/KernelStatusBar';
 import SettingsModal from './components/Settings/SettingsModal';
 
 export default function App() {
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+
   // Auto-restore last workspace on mount
   useEffect(() => {
     workspaceStore.getState().fetchLastWorkspace().then((path) => {
@@ -52,7 +55,7 @@ export default function App() {
 
   return (
     <div className="mentor-app">
-      <MenuBar />
+      <MenuBar onOpenPlugins={() => setPluginsOpen(true)} />
       <div className="mentor-body">
         <main className="mentor-notebook-panel">
           <Notebook />
@@ -63,6 +66,7 @@ export default function App() {
       </div>
       <KernelStatusBar />
       <SettingsModal />
+      {pluginsOpen && <PluginPanel onClose={() => setPluginsOpen(false)} />}
     </div>
   );
 }

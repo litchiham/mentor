@@ -68,6 +68,39 @@ export interface IAgentAction {
   afterId?: string;
 }
 
+export interface IPluginToolDef {
+  name: string;
+  description: string;
+  guidelines?: string;
+  function: string;
+  parameters: Record<string, { type: string; description: string; unit?: string; required?: boolean }>;
+  returns: { type: string; description: string; unit?: string };
+  model?: { format: string; path: string };
+}
+
+export interface IPluginDataDef {
+  name: string;
+  description: string;
+  guidelines?: string;
+  loader: string;
+  loader_type: string;
+  parameters: Record<string, { type: string; description: string; unit?: string; required?: boolean }>;
+  returns: { type: string; description: string };
+  metadata?: Record<string, string>;
+}
+
+export interface IPluginManifest {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  python_module: string;
+  requires: string[];
+  guidelines?: string;
+  tools: IPluginToolDef[];
+  data: IPluginDataDef[];
+}
+
 export async function chatWithAgent(
   message: string,
   apiConfig: ApiSettings,
@@ -164,9 +197,12 @@ export interface IDirectoryBrowseResponse {
   files: { name: string; path: string }[];
 }
 
-export async function browseDirectory(path?: string): Promise<IDirectoryBrowseResponse> {
-  const params = path ? `?path=${encodeURIComponent(path)}` : '';
-  const res = await fetch(`${BASE}/dir/browse${params}`);
+export async function browseDirectory(path?: string, allFiles?: boolean): Promise<IDirectoryBrowseResponse> {
+  const params = new URLSearchParams();
+  if (path) params.set('path', path);
+  if (allFiles) params.set('all', '1');
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/dir/browse${qs ? '?' + qs : ''}`);
   if (!res.ok) throw new Error(`Failed to browse directory: ${res.status}`);
   return res.json();
 }
@@ -179,4 +215,37 @@ export async function createDirectory(parentPath: string, name: string): Promise
   });
   if (!res.ok) throw new Error(`Failed to create directory: ${res.status}`);
   return res.json();
+}
+
+/* ---------- Plugin APIs ---------- */
+
+export async function listPlugins(kernelId: string): Promise<IPluginManifest[]> {
+  const res = await fetch(`${BASE}/plugins?kernelId=${encodeURIComponent(kernelId)}`);
+  if (!res.ok) throw new Error(`Failed to list plugins: ${res.status}`);
+  return res.json();
+}
+
+export async function installPlugin(kernelId: string, packageName: string): Promise<{ status: string; packageName: string }> {
+  const res = await fetch(`${BASE}/plugins/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kernelId, packageName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Install failed' }));
+    throw new Error(err.error || `Failed to install plugin: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function uninstallPlugin(name: string, kernelId: string): Promise<void> {
+  const res = await fetch(`${BASE}/plugins/uninstall/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kernelId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Uninstall failed' }));
+    throw new Error(err.error || `Failed to uninstall plugin: ${res.status}`);
+  }
 }

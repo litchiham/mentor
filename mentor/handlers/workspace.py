@@ -199,12 +199,14 @@ class WorkspaceStateHandler(BaseWorkspaceHandler):
 
 
 class DirectoryBrowseHandler(BaseWorkspaceHandler):
-    """GET /mentor/api/dir/browse?path=/some/path
-    Returns list of directories and .ipynb files in the given path."""
+    """GET /mentor/api/dir/browse?path=/some/path[&all=1]
+    Returns list of directories and files. By default only .ipynb files;
+    pass all=1 to include all files."""
 
     @web.authenticated
     async def get(self):
         path = self.get_argument("path", default=None)
+        show_all = self.get_argument("all", default="0") == "1"
 
         if path is None:
             # Return drive roots on Windows, / on Unix
@@ -251,8 +253,11 @@ class DirectoryBrowseHandler(BaseWorkspaceHandler):
                     continue  # skip hidden files/dirs
                 if os.path.isdir(full):
                     directories.append({"name": entry, "path": full})
-                elif entry.endswith(".ipynb") and os.path.isfile(full):
-                    files.append({"name": entry, "path": full})
+                elif os.path.isfile(full):
+                    if show_all:
+                        files.append({"name": entry, "path": full})
+                    elif entry.endswith(".ipynb"):
+                        files.append({"name": entry, "path": full})
         except PermissionError:
             pass
 

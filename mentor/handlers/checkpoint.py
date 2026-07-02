@@ -54,7 +54,7 @@ class BaseMentorHandler(ExtensionHandlerMixin, APIHandler):
         return os.path.join(self.storage_path, f"{checkpoint_id}.dill")
 
     async def _run_in_kernel(self, kernel_id: str, code: str, timeout: float = 30) -> str:
-        """Execute code on a kernel and wait for the result."""
+        """Execute code on a kernel and collect stdout text."""
         km = self.serverapp.kernel_manager
         kernel = km.get_kernel(kernel_id)
         if kernel is None:
@@ -63,8 +63,18 @@ class BaseMentorHandler(ExtensionHandlerMixin, APIHandler):
         client = kernel.blocking_client()
         client.start_channels()
         try:
-            result = await asyncio.to_thread(client.execute_interactive, code, timeout=timeout)
-            return str(result)
+            client.execute(code)
+            stdout_parts = []
+
+            def _collect():
+                while True:
+                    msg = client.get_iopub_msg(timeout=timeout)
+                    if msg["msg_type"] == "status" and msg["content"]["execution_state"] == "idle":
+                        return "".join(stdout_parts)
+                    elif msg["msg_type"] == "stream" and msg["content"]["name"] == "stdout":
+                        stdout_parts.append(msg["content"]["text"])
+
+            return await asyncio.to_thread(_collect)
         finally:
             client.stop_channels()
 
